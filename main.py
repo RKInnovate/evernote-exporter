@@ -7,6 +7,12 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from gdrive import upload_directory, authenticate_drive
+from pdf_utils import (
+    generate_unique_id,
+    create_multi_item_pdf,
+    should_create_multi_item_pdf,
+    create_text_pdf
+)
 
 
 def load_extraction_log(log_file: Path) -> dict:
@@ -70,7 +76,7 @@ def process_enex_file(file: Path, output_dir: Path, logs: dict):
 
 def process_note(note, notebook_name, file, output_dir, logs):
     """
-    Process a single note: extract text and resources.
+    Process a single note: extract text and resources, create PDFs with unique IDs.
 
     Args:
         note (Element): XML note element.
@@ -83,9 +89,11 @@ def process_note(note, notebook_name, file, output_dir, logs):
     if not title:
         return
 
-    # Encode the title to make it safe for the filesystem
-    # title = urllib.parse.quote_plus(title).replace("+", " ")
-    title = title.replace("/", "-").replace("--", "-")
+    # Generate unique ID for this note
+    note_id = generate_unique_id()
+
+    # Make title safe for filesystem
+    safe_title = title.replace("/", "-").replace("--", "-")
 
     resources = note.findall("resource")
     content_element = note.find("content")
@@ -98,108 +106,261 @@ def process_note(note, notebook_name, file, output_dir, logs):
         except ET.ParseError:
             pass
 
-    # If there are resources, create a subfolder for the note
-    if len(resources) > 0 and text_content:
-        note_dir = output_dir / notebook_name / title
-    else:
-        note_dir = output_dir / notebook_name
-
+    # Always place files directly in notebook directory (no nested folders)
+    note_dir = output_dir / notebook_name
     note_dir.mkdir(parents=True, exist_ok=True)
 
-    if resources:
-        handle_resources(resources, note_dir, title, file, notebook_name, logs)
+    # Determine if we should create a multi-item PDF
+    if should_create_multi_item_pdf(text_content, len(resources)):
+        handle_multi_item_note(
+            note_id, safe_title, text_content, resources,
+            note_dir, file, notebook_name, logs
+        )
+    else:
+        # Handle single item or text-only notes
+        if resources:
+            handle_single_resource(
+                note_id, safe_title, resources[0],
+                note_dir, file, notebook_name, logs
+            )
+        elif text_content:
+            handle_text_only_note(
+                note_id, safe_title, text_content,
+                note_dir, file, notebook_name, logs
+            )
 
-    handle_text_content(text_content, note_dir, title, file, notebook_name, logs)
 
-
-def handle_text_content(text_content, note_dir, title, file, notebook_name, logs):
+def handle_multi_item_note(
+    note_id, safe_title, text_content, resources,
+    note_dir, file, notebook_name, logs
+):
     """
-    Extract and save the plain text content from a note.
+    Handle notes with multiple items - merge supported files into PDF, save others separately.
+
+    TODO: Enhanced handling for unsupported file types requires discussion:
+    - Should unsupported files be listed in the PDF with links?
+    - Generate thumbnails/previews for videos?
+    - Convert HTML to PDF with proper rendering?
 
     Args:
-        text_content (Text): XML note text content.
-        note_dir (Path): Directory to save note content.
-        title (str): Title of the note.
-        file (Path): ENEX file source.
-        notebook_name (str): Name of the notebook.
-        logs (dict): Log dictionary.
-    """
-
-    if not text_content:
-        return
-
-    file_path = note_dir / f"{title}.txt"
-    content_bytes = text_content.encode()
-
-    if not file_path.exists():
-        file_path.write_bytes(content_bytes)
-
-    logs[notebook_name].append({
-        "file": file.name,
-        "note": title,
-        "success": True,
-        "file_path": str(file_path),
-        "notebook": notebook_name,
-    })
-
-
-def handle_resources(resources, note_dir, title, file, notebook_name, logs):
-    """
-    Extract and save all resources (e.g., images, PDFs) from a note.
-
-    Args:
+        note_id (str): Unique identifier for the note.
+        safe_title (str): Filesystem-safe note title.
+        text_content (str): Text content of the note.
         resources (list): List of resource elements.
-        note_dir (Path): Directory to save resources.
-        title (str): Note title.
+        note_dir (Path): Directory to save the PDF.
         file (Path): ENEX source file.
         notebook_name (str): Name of the notebook.
         logs (dict): Log dictionary.
     """
-    for idx, res in enumerate(resources):
-        data_element = res.find("data")
-        mime_element = res.find("mime")
+    # Extract resources to temporary files
+    temp_resource_paths = []
+    temp_dir = note_dir / ".temp_resources"
+    temp_dir.mkdir(exist_ok=True)
 
-        if data_element is None or mime_element is None:
-            continue
+    try:
+        for idx, res in enumerate(resources):
+            data_element = res.find("data")
+            mime_element = res.find("mime")
 
-        mime_type = mime_element.text
-        if not mime_type or not data_element.text:
-            logs[notebook_name].append({
-                "file": file.name,
-                "note": title,
-                "success": False,
-                "notebook": notebook_name,
-                "error": "Missing mime type or resource data"
-            })
-            continue
+            if data_element is None or mime_element is None:
+                continue
 
-        # Guess file extension from MIME type
-        extension = mimetypes.guess_extension(mime_type, strict=True) or ""
-        file_name = f"{title}_{idx + 1}{extension}" if len(resources) > 1 else f"{title}{extension}"
-        file_path = note_dir / file_name
+            mime_type = mime_element.text
+            if not mime_type or not data_element.text:
+                continue
+
+            # Guess file extension from MIME type
+            extension = mimetypes.guess_extension(mime_type, strict=True) or ""
+            temp_file_name = f"resource_{idx}{extension}"
+            temp_file_path = temp_dir / temp_file_name
+
+            try:
+                binary_data = base64.b64decode(data_element.text)
+                temp_file_path.write_bytes(binary_data)
+                temp_resource_paths.append(temp_file_path)
+            except Exception as e:
+                print(f"Error decoding resource: {e}")
+                continue
+
+        # Create multi-item PDF with "MultiItem" keyword (only supported files)
+        output_pdf_path = note_dir / f"{note_id} - {safe_title}-MultiItem.pdf"
 
         try:
-            binary_data = base64.b64decode(data_element.text)
+            success, unsupported_files = create_multi_item_pdf(
+                text_content, temp_resource_paths, output_pdf_path
+            )
+
+            if success:
+                logs[notebook_name].append({
+                    "file": file.name,
+                    "note": safe_title,
+                    "note_id": note_id,
+                    "success": True,
+                    "file_path": str(output_pdf_path),
+                    "notebook": notebook_name,
+                    "type": "multi-item-pdf",
+                })
+                print(f"✓ Created multi-item PDF: {output_pdf_path.name}")
+
+            # Save unsupported files separately with ID prefix
+            if unsupported_files:
+                print(f"⚠️  Note '{safe_title}' has {len(unsupported_files)} unsupported file(s) - saving separately")
+                for unsupported_file in unsupported_files:
+                    separate_file_path = note_dir / f"{note_id} - {safe_title}-{unsupported_file.name}"
+                    unsupported_file.rename(separate_file_path)
+                    logs[notebook_name].append({
+                        "file": file.name,
+                        "note": safe_title,
+                        "note_id": note_id,
+                        "success": True,
+                        "file_path": str(separate_file_path),
+                        "notebook": notebook_name,
+                        "type": "unsupported-separate-file",
+                        "warning": "File type not supported in PDF merge - saved separately"
+                    })
+                    print(f"  → Saved separately: {separate_file_path.name}")
+
         except Exception as e:
             logs[notebook_name].append({
                 "file": file.name,
-                "note": title,
+                "note": safe_title,
+                "note_id": note_id,
                 "success": False,
                 "notebook": notebook_name,
-                "error": f"Base64 decoding failed: {str(e)}"
+                "error": f"PDF creation failed: {str(e)}"
             })
-            continue
+            print(f"✗ Error creating multi-item PDF for {safe_title}: {e}")
 
+    finally:
+        # Clean up temporary files (only ones still in temp directory)
+        for temp_file in temp_resource_paths:
+            try:
+                if temp_file.exists() and temp_file.parent == temp_dir:
+                    temp_file.unlink()
+            except Exception:
+                pass
+
+        # Remove temp directory if empty
+        try:
+            if temp_dir.exists() and not any(temp_dir.iterdir()):
+                temp_dir.rmdir()
+        except Exception:
+            pass
+
+
+def handle_single_resource(
+    note_id, safe_title, resource,
+    note_dir, file, notebook_name, logs
+):
+    """
+    Handle notes with a single resource (no text or only one attachment).
+
+    Args:
+        note_id (str): Unique identifier for the note.
+        safe_title (str): Filesystem-safe note title.
+        resource (Element): Resource element.
+        note_dir (Path): Directory to save the file.
+        file (Path): ENEX source file.
+        notebook_name (str): Name of the notebook.
+        logs (dict): Log dictionary.
+    """
+    data_element = resource.find("data")
+    mime_element = resource.find("mime")
+
+    if data_element is None or mime_element is None:
+        logs[notebook_name].append({
+            "file": file.name,
+            "note": safe_title,
+            "note_id": note_id,
+            "success": False,
+            "notebook": notebook_name,
+            "error": "Missing mime type or resource data"
+        })
+        return
+
+    mime_type = mime_element.text
+    if not mime_type or not data_element.text:
+        logs[notebook_name].append({
+            "file": file.name,
+            "note": safe_title,
+            "note_id": note_id,
+            "success": False,
+            "notebook": notebook_name,
+            "error": "Missing mime type or resource data"
+        })
+        return
+
+    # Guess file extension from MIME type
+    extension = mimetypes.guess_extension(mime_type, strict=True) or ""
+    file_name = f"{note_id} - {safe_title}{extension}"
+    file_path = note_dir / file_name
+
+    try:
+        binary_data = base64.b64decode(data_element.text)
         if not file_path.exists():
             file_path.write_bytes(binary_data)
 
         logs[notebook_name].append({
             "file": file.name,
-            "note": title,
+            "note": safe_title,
+            "note_id": note_id,
             "success": True,
             "file_path": str(file_path),
             "notebook": notebook_name,
+            "type": "single-resource",
         })
+        print(f"Saved single resource: {file_path.name}")
+    except Exception as e:
+        logs[notebook_name].append({
+            "file": file.name,
+            "note": safe_title,
+            "note_id": note_id,
+            "success": False,
+            "notebook": notebook_name,
+            "error": f"Base64 decoding or file write failed: {str(e)}"
+        })
+
+
+def handle_text_only_note(
+    note_id, safe_title, text_content,
+    note_dir, file, notebook_name, logs
+):
+    """
+    Handle notes with only text content (no attachments).
+
+    Args:
+        note_id (str): Unique identifier for the note.
+        safe_title (str): Filesystem-safe note title.
+        text_content (str): Text content of the note.
+        note_dir (Path): Directory to save the PDF.
+        file (Path): ENEX source file.
+        notebook_name (str): Name of the notebook.
+        logs (dict): Log dictionary.
+    """
+    file_path = note_dir / f"{note_id}-{safe_title}.pdf"
+
+    try:
+        create_text_pdf(text_content, file_path)
+        logs[notebook_name].append({
+            "file": file.name,
+            "note": safe_title,
+            "note_id": note_id,
+            "success": True,
+            "file_path": str(file_path),
+            "notebook": notebook_name,
+            "type": "text-only-pdf",
+        })
+        print(f"Created text-only PDF: {file_path.name}")
+    except Exception as e:
+        logs[notebook_name].append({
+            "file": file.name,
+            "note": safe_title,
+            "note_id": note_id,
+            "success": False,
+            "notebook": notebook_name,
+            "error": f"PDF creation failed: {str(e)}"
+        })
+        print(f"Error creating text-only PDF for {safe_title}: {e}")
 
 
 def process_files(output_directory: Path, dry_run: bool) -> None:
