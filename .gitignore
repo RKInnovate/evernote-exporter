@@ -13,6 +13,7 @@ credentials*
 # Input and Output Data
 input_data/
 output_data/
+output/
 EverNote Notes/
 
 # Zed Files

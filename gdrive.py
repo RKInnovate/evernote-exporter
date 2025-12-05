@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pickle
@@ -12,7 +13,7 @@ def authenticate_drive():
     SCOPES = ["https://www.googleapis.com/auth/drive"]
     creds = None
     if pickel_path.exists():
-            creds = pickle.loads(pickel_path.read_bytes())
+        creds = pickle.loads(pickel_path.read_bytes())
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())

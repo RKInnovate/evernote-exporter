@@ -2,6 +2,7 @@ import json
 import base64
 import argparse
 import mimetypes
+import os
 import urllib.parse
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -396,9 +397,14 @@ def process_files(output_directory: Path, dry_run: bool) -> None:
 
     if dry_run:
         print("Dry run complete. No files were uploaded.")
-    else:
+    elif os.path.exists("credentials.json"):
         service_account = authenticate_drive()
         upload_directory(service_account, output_directory)
+    elif not os.path.exists("credentials.json"):
+        raise FileNotFoundError("""credentials.json not found!.
+Please create a credentials.json file in the root directory of the project.
+Google Drive API documentation: https://developers.google.com/drive/api/v3/quickstart/python
+""")
 
 def finalize_logs(logs_json: dict, log_file: Path):
     log_file.write_text(json.dumps(logs_json, indent=4))
