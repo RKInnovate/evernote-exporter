@@ -90,6 +90,8 @@ uv run python main.py --help
 | `--output-directory` | `-o` | Output directory (default: `./EverNote Notes`) |
 | `--dry-run` | `-d` | Extract without uploading to Drive |
 | `--no-serial` | `-ns` | Preserve original filenames (no 6-digit ID prefix) |
+| `--verbose` | `-v` | Enable verbose logging (DEBUG level) with detailed progress |
+| `--quiet` | `-q` | Enable quiet mode (ERROR level only, no warnings or info) |
 | `--help` | `-h` | Show help message |
 
 **⚠️ Collision Warning:** When using `--no-serial` with duplicate note titles, files are automatically renamed with `_1`, `_2` suffixes to prevent data loss.

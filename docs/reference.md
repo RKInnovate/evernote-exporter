@@ -19,6 +19,8 @@ uv run python main.py [OPTIONS]
 | `--output-directory` | `-o` | Path | `./EverNote Notes` | Directory where converted notes are saved (also becomes Drive folder name) |
 | `--dry-run` | `-d` | Boolean | `False` | Extract and convert files without uploading to Google Drive |
 | `--no-serial` | `-ns` | Boolean | `False` | Preserve original filenames without 6-digit ID prefix |
+| `--verbose` | `-v` | Boolean | `False` | Enable verbose logging (DEBUG level) with detailed progress |
+| `--quiet` | `-q` | Boolean | `False` | Enable quiet mode (ERROR level only, no warnings or info) |
 | `--help` | `-h` | - | - | Show help message and exit |
 
 ### Flag Details
@@ -122,6 +124,92 @@ uv run python main.py -ns -d
 - You frequently have duplicate note titles
 - You want guaranteed unique filenames
 - You need to trace files back to source ENEX by ID
+
+#### `--verbose` / `-v`
+
+Enable detailed logging with DEBUG level output.
+
+**Use Cases:**
+- Debugging issues during conversion
+- Understanding what the tool is doing
+- Seeing detailed progress for each note
+- Investigating warnings or errors
+
+**Examples:**
+```bash
+# Enable verbose logging
+uv run python main.py --verbose
+
+# Short form
+uv run python main.py -v
+
+# Combine with dry-run
+uv run python main.py -v -d
+```
+
+**Output Example:**
+```
+2025-12-10 14:30:45 [INFO] Starting Evernote to Google Drive migration
+2025-12-10 14:30:45 [DEBUG] Log level: DEBUG
+2025-12-10 14:30:45 [INFO] Processing notes into: ./EverNote Notes
+2025-12-10 14:30:45 [INFO] Found 3 ENEX file(s) to process
+2025-12-10 14:30:45 [INFO] Processing: Work.enex
+2025-12-10 14:30:46 [INFO] ✓ Created multi-item PDF: A3B9K2-Meeting Notes-MultiItem.pdf
+2025-12-10 14:30:46 [DEBUG]   → Saved separately: video.mp4
+2025-12-10 14:30:46 [WARNING] ⚠️  File collision: 'Recipe.pdf' already exists, using 'Recipe_1.pdf'
+```
+
+**When to Use:**
+- First time running the tool
+- Troubleshooting conversion issues
+- Large ENEX files (see progress per note)
+- Understanding warnings and errors
+
+#### `--quiet` / `-q`
+
+Suppress all output except errors (ERROR level only).
+
+**Use Cases:**
+- Automated scripts or CI/CD pipelines
+- Cron jobs
+- Batch processing where you only care about failures
+- Reducing log noise
+
+**Examples:**
+```bash
+# Enable quiet mode
+uv run python main.py --quiet
+
+# Short form
+uv run python main.py -q
+
+# Quiet with dry-run
+uv run python main.py -q -d
+```
+
+**Output Example:**
+```
+2025-12-10 14:30:50 [ERROR] ✗ Error creating multi-item PDF for 'Broken Note': XML parse error (notebook: Work, file: Work.enex)
+2025-12-10 14:30:51 [ERROR] Failed to decode resource in note 'Bad Resource' (notebook: Personal, file: Personal.enex): Invalid base64
+```
+
+**When to Use:**
+- Automated workflows
+- When you only need to know about failures
+- Scripts that parse output
+- Reducing terminal clutter
+
+**Note:** The summary report is still printed at INFO level, so it will not appear in quiet mode.
+
+#### Logging Levels
+
+| Mode | Level | Shows |
+|------|-------|-------|
+| **Default** | INFO | Success messages, progress, warnings, errors |
+| **Verbose** (`-v`) | DEBUG | All messages including detailed debug info |
+| **Quiet** (`-q`) | ERROR | Only errors and failures |
+
+**Priority:** If both `--verbose` and `--quiet` are specified, `--quiet` takes precedence.
 
 ---
 

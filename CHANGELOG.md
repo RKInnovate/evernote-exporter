@@ -11,15 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Optional filename preservation flag** (`-ns` or `--no-serial`) - Allows users to preserve original note filenames without the 6-digit alphanumeric ID prefix. Both flag names are supported for flexibility.
 - **Automatic filename collision handling** - When using `--no-serial` and multiple notes have the same title, the tool automatically adds `_1`, `_2` suffixes to prevent silent data loss.
 - **Collision warning logging** - All filename collisions are logged to `extraction_log.json` with type `"filename-collision"` and printed as warnings during execution.
+- **Structured logging with verbosity controls** (`-v`/`--verbose` or `-q`/`--quiet`) - Control log output level: verbose (DEBUG), default (INFO), or quiet (ERROR only).
+- **Actionable error messages** - All warnings and errors now include full context: notebook name, note title, source file, and output path for easier troubleshooting.
+- **End-of-run summary report** - Automatic summary table showing: notebooks processed, total notes, successes, failures, warnings, and collisions.
 
 ### Fixed
 - **Critical bug fix**: Files are no longer silently skipped when using `--no-serial` with duplicate note titles. Previously, the second note with the same title would be lost without warning.
 - **Dual package manager support** - Added both `[project.optional-dependencies]` (for pip) and `[dependency-groups]` (for uv) to pyproject.toml, ensuring compatibility with both package managers.
 
 ### Planned for v1.1.0
-- Enhanced error handling and warning messages
-- Verbose logging mode
-- Comprehensive error reports
+- Robust error recovery (XML parse errors, malformed data)
+- Progress indicators for large ENEX files
+- Comprehensive error reports with retry logic
 
 ## [1.0.0] - 2025-12-10
 

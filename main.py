@@ -15,6 +15,7 @@ Key Concepts:
 import argparse  # For parsing command-line arguments (like --dry-run)
 import base64  # For decoding base64-encoded file data from ENEX files
 import json  # For reading/writing JSON log files
+import logging  # For structured logging with different severity levels
 import mimetypes  # For guessing file extensions from MIME types
 import os  # For checking if files exist
 import xml.etree.ElementTree as ET  # For parsing XML content in ENEX files
@@ -28,6 +29,9 @@ from pdf_utils import (
     generate_unique_id,  # Creates unique 6-character IDs for notes
     should_create_multi_item_pdf,  # Decides if we need a multi-item PDF
 )
+
+# Configure logger for this module (after imports)
+logger = logging.getLogger(__name__)
 
 
 def load_extraction_log(log_file: Path) -> dict:
@@ -148,7 +152,7 @@ def get_unique_filepath(base_path: Path, logs: dict) -> Path:
         if not new_path.exists():
             # Log collision warning
             warning_msg = f"File collision: '{base_path.name}' already exists, using '{new_path.name}'"
-            print(f"⚠️  WARNING: {warning_msg}")
+            logger.warning(f"⚠️  {warning_msg}")
             logs.setdefault("warnings", []).append({
                 "type": "filename-collision",
                 "original": base_path.name,
@@ -435,8 +439,11 @@ def handle_multi_item_note(
                 # Remember this file path for later processing
                 temp_resource_paths.append(temp_file_path)
             except Exception as e:
-                # If decoding fails, print error and continue with next resource
-                print(f"Error decoding resource: {e}")
+                # If decoding fails, log error with context and continue with next resource
+                logger.error(
+                    f"Failed to decode resource in note '{safe_title}' "
+                    f"(notebook: {notebook_name}, file: {file.name}): {e}"
+                )
                 continue  # Skip this resource, try next one
 
         # Create the final PDF filename
@@ -471,12 +478,15 @@ def handle_multi_item_note(
                     "notebook": notebook_name,   # Which notebook
                     "type": "multi-item-pdf",    # Type of output
                 })
-                print(f"✓ Created multi-item PDF: {output_pdf_path.name}")
+                logger.info(f"✓ Created multi-item PDF: {output_pdf_path.name}")
 
             # Handle unsupported files (videos, ZIP files, etc.)
             # These can't be merged into PDF, so save them separately
             if unsupported_files:
-                print(f"⚠️  Note '{safe_title}' has {len(unsupported_files)} unsupported file(s) - saving separately")
+                logger.warning(
+                    f"⚠️  Note '{safe_title}' has {len(unsupported_files)} unsupported file(s) - saving separately "
+                    f"(notebook: {notebook_name}, file: {file.name})"
+                )
 
                 # Move each unsupported file from temp directory to final location
                 for unsupported_file in unsupported_files:
@@ -505,10 +515,14 @@ def handle_multi_item_note(
                         "type": "unsupported-separate-file",
                         "warning": "File type not supported in PDF merge - saved separately"
                     })
-                    print(f"  → Saved separately: {separate_file_path.name}")
+                    logger.debug(f"  → Saved separately: {separate_file_path.name}")
 
         except Exception as e:
-            # If PDF creation fails, log the error
+            # If PDF creation fails, log the error with full context
+            logger.error(
+                f"✗ Error creating multi-item PDF for '{safe_title}': {e} "
+                f"(notebook: {notebook_name}, file: {file.name})"
+            )
             logs[notebook_name].append({
                 "file": file.name,
                 "note": safe_title,
@@ -517,7 +531,6 @@ def handle_multi_item_note(
                 "notebook": notebook_name,
                 "error": f"PDF creation failed: {str(e)}"  # Save error message
             })
-            print(f"✗ Error creating multi-item PDF for {safe_title}: {e}")
 
     finally:
         # CLEANUP: This block always runs, even if errors occurred above
@@ -641,7 +654,7 @@ def handle_single_resource(
             "notebook": notebook_name,
             "type": "single-resource",  # Mark as single resource type
         })
-        print(f"Saved single resource: {file_path.name}")
+        logger.info(f"✓ Saved single resource: {file_path.name}")
 
     except Exception as e:
         # If anything goes wrong (decoding error, write permission, etc.)
@@ -717,10 +730,14 @@ def handle_text_only_note(
             "notebook": notebook_name,
             "type": "text-only-pdf",  # Mark as text-only type
         })
-        print(f"Created text-only PDF: {file_path.name}")
+        logger.info(f"✓ Created text-only PDF: {file_path.name}")
 
     except Exception as e:
-        # If PDF creation fails, log the error
+        # If PDF creation fails, log the error with full context
+        logger.error(
+            f"✗ Error creating text-only PDF for '{safe_title}': {e} "
+            f"(notebook: {notebook_name}, file: {file.name})"
+        )
         logs[notebook_name].append({
             "file": file.name,
             "note": safe_title,
@@ -729,7 +746,6 @@ def handle_text_only_note(
             "notebook": notebook_name,
             "error": f"PDF creation failed: {str(e)}"
         })
-        print(f"Error creating text-only PDF for {safe_title}: {e}")
 
 
 def process_files(output_directory: Path, dry_run: bool, preserve_filenames: bool = False) -> None:
@@ -768,11 +784,11 @@ def process_files(output_directory: Path, dry_run: bool, preserve_filenames: boo
         6. Upload to Google Drive (if not dry run)
     """
     # Inform user where files will be saved
-    print(f"[INFO] Processing notes into: {output_directory}")
+    logger.info(f"Processing notes into: {output_directory}")
 
     # Inform user if we're in test mode (dry run)
     if dry_run:
-        print("[INFO] Dry run mode enabled — Google Drive syncing will be skipped.")
+        logger.info("Dry run mode enabled — Google Drive syncing will be skipped.")
 
     # Define paths - these are relative to where you run the script from
     input_directory = Path("./input_data")  # Where ENEX files are stored
@@ -796,22 +812,30 @@ def process_files(output_directory: Path, dry_run: bool, preserve_filenames: boo
 
     # Check if we found any files to process
     if not files:
-        print("No ENEX files found.")
+        logger.warning("No ENEX files found in input_data/")
         return  # Exit early - nothing to do
+
+    logger.info(f"Found {len(files)} ENEX file(s) to process")
 
     # Process each ENEX file
     # Each file represents one notebook from Evernote
     for file in files:
+        logger.info(f"Processing: {file.name}")
         # This processes the entire ENEX file and all notes within it
         process_enex_file(file, output_directory, logs_json, preserve_filenames)
 
     # Save all the logs we've accumulated to the JSON file
     finalize_logs(logs_json, extraction_log_file)
+    logger.info(f"Saved extraction log to: {extraction_log_file}")
+
+    # Compute and print summary statistics
+    summary = compute_summary(logs_json)
+    print_summary(summary, output_directory)
 
     # Handle Google Drive upload (if not in dry-run mode)
     if dry_run:
         # Dry run - just tell user we're done, no upload
-        print("Dry run complete. No files were uploaded.")
+        logger.info("✓ Dry run complete. No files were uploaded.")
     elif os.path.exists("credentials.json"):
         # Credentials file exists - proceed with upload
         # First, authenticate with Google Drive
@@ -826,6 +850,87 @@ def process_files(output_directory: Path, dry_run: bool, preserve_filenames: boo
 Please create a credentials.json file in the root directory of the project.
 Google Drive API documentation: https://developers.google.com/drive/api/v3/quickstart/python
 """)
+
+def compute_summary(logs_json: dict) -> dict:
+    """
+    Compute summary statistics from processing logs.
+
+    Args:
+        logs_json: Dictionary containing all processing logs
+
+    Returns:
+        dict: Summary statistics including counts of successes, failures, warnings
+
+    Example:
+        {
+            "total_notes": 150,
+            "successful": 145,
+            "failed": 5,
+            "warnings": 3,
+            "collisions": 2,
+            "notebooks": 5
+        }
+    """
+    total_notes = 0
+    successful = 0
+    failed = 0
+    warnings_count = len(logs_json.get("warnings", []))
+    collision_count = sum(
+        1 for w in logs_json.get("warnings", [])
+        if w.get("type") == "filename-collision"
+    )
+
+    # Count notes per notebook
+    notebooks = [k for k in logs_json.keys() if k != "warnings"]
+
+    for notebook in notebooks:
+        for entry in logs_json[notebook]:
+            total_notes += 1
+            if entry.get("success", False):
+                successful += 1
+            else:
+                failed += 1
+
+    return {
+        "total_notes": total_notes,
+        "successful": successful,
+        "failed": failed,
+        "warnings": warnings_count,
+        "collisions": collision_count,
+        "notebooks": len(notebooks)
+    }
+
+
+def print_summary(summary: dict, output_directory: Path):
+    """
+    Print a formatted summary report of the processing run.
+
+    Args:
+        summary: Summary statistics dictionary
+        output_directory: Path where files were saved
+    """
+    logger.info("\n" + "=" * 60)
+    logger.info("PROCESSING SUMMARY")
+    logger.info("=" * 60)
+    logger.info(f"Output directory: {output_directory}")
+    logger.info(f"Notebooks processed: {summary['notebooks']}")
+    logger.info(f"Total notes: {summary['total_notes']}")
+    logger.info(f"  ✓ Successful: {summary['successful']}")
+
+    if summary['failed'] > 0:
+        logger.warning(f"  ✗ Failed: {summary['failed']}")
+
+    if summary['warnings'] > 0:
+        logger.warning(f"  ⚠️  Warnings: {summary['warnings']}")
+
+    if summary['collisions'] > 0:
+        logger.warning(f"  🔄 Filename collisions: {summary['collisions']}")
+
+    logger.info("=" * 60)
+
+    if summary['failed'] > 0 or summary['warnings'] > 0:
+        logger.info("See extraction_log.json for details")
+
 
 def finalize_logs(logs_json: dict, log_file: Path):
     """
@@ -902,9 +1007,42 @@ if __name__ == "__main__":
         help="Preserve original filenames without adding serial number prefix (default: False)"
     )
 
+    # Add --verbose or -v for detailed logging
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose logging (DEBUG level) with detailed progress"
+    )
+
+    # Add --quiet or -q for minimal logging
+    parser.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        help="Enable quiet mode (ERROR level only, no warnings or info)"
+    )
+
     # Parse the command-line arguments
     # This reads what the user typed and converts it to Python variables
     args = parser.parse_args()
+
+    # Configure logging based on verbosity flags
+    # Priority: --quiet > --verbose > default (INFO)
+    if args.quiet:
+        log_level = logging.ERROR
+    elif args.verbose:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
+
+    # Setup logging format with timestamp, level, and message
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+    logger.info("Starting Evernote to Google Drive migration")
+    logger.debug(f"Log level: {logging.getLevelName(log_level)}")
 
     # Extract the values from parsed arguments
     output_directory: Path = args.output_directory  # Get output directory path
