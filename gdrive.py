@@ -12,15 +12,14 @@ Key Concepts:
 - Service Account: The API client that can interact with Drive
 """
 
-import os
-from pathlib import Path
-
 # Third-party imports for Google Drive API
 import pickle  # For saving/loading authentication tokens
+from pathlib import Path
+
+from google.auth.transport.requests import Request  # For refreshing tokens
+from google_auth_oauthlib.flow import InstalledAppFlow  # OAuth flow for desktop apps
 from googleapiclient.discovery import build  # Builds the Drive API service object
 from googleapiclient.http import MediaFileUpload  # For uploading files to Drive
-from google_auth_oauthlib.flow import InstalledAppFlow  # OAuth flow for desktop apps
-from google.auth.transport.requests import Request  # For refreshing tokens
 
 # Path to store authentication token
 # pickle format is a Python-specific binary format for saving objects
@@ -44,12 +43,12 @@ def authenticate_drive():
 
     Returns:
         Service object: A Google Drive API service that can create folders, upload files, etc.
-    
+
     EXAMPLE:
         service = authenticate_drive()
         # First time: Browser opens, you sign in, grant permissions
         # Next time: Uses saved token, no browser needed
-    
+
     IMPORTANT CONCEPTS:
         - OAuth 2.0: Secure authentication that doesn't require storing passwords
         - Scopes: Define what permissions we're asking for (full Drive access)
@@ -59,20 +58,20 @@ def authenticate_drive():
     # Define what permissions we need from Google Drive
     # This scope gives full read/write access to Drive
     SCOPES = ["https://www.googleapis.com/auth/drive"]
-    
+
     creds = None  # Will store credentials object
-    
+
     # Check if we have a saved token from a previous authentication
     if pickel_path.exists():
         # Load the saved credentials from the pickle file
         # read_bytes() reads the file as binary data
         # pickle.loads() converts binary data back into Python object
         creds = pickle.loads(pickel_path.read_bytes())
-    
+
     # Check if credentials are valid
     if not creds or not creds.valid:
         # Credentials are missing or invalid
-        
+
         # If credentials exist but are expired, try to refresh them
         if creds and creds.expired and creds.refresh_token:
             # Refresh the token - gets new access token without user interaction
@@ -80,20 +79,20 @@ def authenticate_drive():
         else:
             # No valid credentials - need to authenticate from scratch
             # This will open a browser window for user to sign in
-            
+
             # Create OAuth flow from credentials file
             flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-            
+
             # Run the authentication flow
             # port=0 means "pick any available port"
             # Opens browser, user signs in, grants permissions
             creds = flow.run_local_server(port=0)
-        
+
         # Save the credentials (or refreshed credentials) for next time
         # pickle.dumps() converts Python object to binary data
         # write_bytes() writes binary data to file
         pickel_path.write_bytes(pickle.dumps(creds))
-    
+
     # Build and return the Drive API service object
     # "drive" = service name
     # "v3" = API version
@@ -130,29 +129,29 @@ def create_drive_directory(service, name, parent_id=None):
         folder_id = create_drive_directory(service, "Work Notes")
         # Creates "Work Notes" folder in Drive root
         # Returns something like "1a2b3c4d5e6f7g8h9i0j"
-        
+
         subfolder_id = create_drive_directory(service, "2024", parent_id=folder_id)
         # Creates "2024" folder inside "Work Notes"
-    
+
     IMPORTANT:
         - Google Drive uses IDs, not paths, to identify folders
         - Every folder/file gets a unique ID when created
         - We need this ID to reference the folder later
     """
     print("Creating folder:", name)
-    
+
     # Set up metadata for the folder
     # In Google Drive API, folders are just files with a special MIME type
     file_metadata = {
         "name": name,  # The folder name
         "mimeType": "application/vnd.google-apps.folder"  # Tells Drive this is a folder
     }
-    
+
     # If parent_id is provided, set it as the parent folder
     # This makes the new folder a subfolder of the parent
     if parent_id:
         file_metadata["parents"] = [parent_id]  # Must be a list
-    
+
     # Create the folder using Google Drive API
     # service.files() = files and folders API
     # .create() = create new item
@@ -160,7 +159,7 @@ def create_drive_directory(service, name, parent_id=None):
     # fields="id" = only return the ID (more efficient than returning all metadata)
     # .execute() = actually make the API call
     folder = service.files().create(body=file_metadata, fields="id").execute()
-    
+
     # Return the folder ID (we'll need this to upload files into the folder)
     return folder["id"]
 
@@ -189,30 +188,30 @@ def upload_file(service, file_path: Path, parent_id: str):
         folder_id = create_drive_directory(service, "My Notes")
         upload_file(service, Path("./My Notes/note.pdf"), folder_id)
         # Uploads note.pdf into "My Notes" folder in Drive
-    
+
     IMPORTANT CONCEPTS:
         - resumable=True: Allows upload to resume if interrupted (good for large files)
         - parent_id: Must be a valid folder ID from create_drive_directory()
         - This only uploads ONE file - use upload_directory() for multiple files
     """
     print("Uploading file:", file_path.name, "from the directory:", file_path.parent)
-    
+
     # Get just the filename (without path)
     # Example: Path("./Notes/note.pdf") → file_name = "note.pdf"
     file_name = file_path.name
-    
+
     # Set up metadata for the file
     file_metadata = {
         "name": file_name,        # Name in Drive (usually same as filename)
         "parents": [parent_id]    # Which folder to upload into
     }
-    
+
     # Create media upload object
     # MediaFileUpload handles the actual file transfer
     # resumable=True means if upload fails, it can resume from where it stopped
     # This is important for large files
     media = MediaFileUpload(file_path, resumable=True)
-    
+
     # Upload the file to Google Drive
     # service.files() = files API
     # .create() = create new file
@@ -248,7 +247,7 @@ def upload_directory(service, local_path: Path, parent_id: str | None = None):
         service = authenticate_drive()
         upload_directory(service, Path("./EverNote Notes"))
         # Recreates entire "EverNote Notes" folder structure in Drive
-        
+
         Structure on computer:
         EverNote Notes/
           Notebook1/
@@ -256,15 +255,15 @@ def upload_directory(service, local_path: Path, parent_id: str | None = None):
             note2.pdf
           Notebook2/
             note3.pdf
-        
+
         Result in Drive: Same structure exactly!
-    
+
     IMPORTANT CONCEPTS:
         - Recursive function: Calls itself to handle nested folders
         - iterdir(): Gets all items (files and folders) in a directory
         - is_dir(): Checks if an item is a folder (vs a file)
         - This maintains the exact folder structure from your computer
-    
+
     RECURSION EXPLANATION:
         When it finds a subfolder, it calls itself (upload_directory) with that subfolder.
         This continues until all nested folders are processed.
@@ -279,12 +278,12 @@ def upload_directory(service, local_path: Path, parent_id: str | None = None):
     # Get the name of the folder we're uploading
     # Example: Path("./EverNote Notes") → folder_name = "EverNote Notes"
     folder_name = local_path.name
-    
+
     # Create a folder in Drive with this name
     # parent_id determines where it goes (None = Drive root)
     # Returns the new folder's ID (needed to upload files into it)
     folder_id = create_drive_directory(service, folder_name, parent_id)
-    
+
     # Loop through all items in the local folder
     # iterdir() returns both files and subfolders
     for item in local_path.iterdir():
@@ -299,5 +298,5 @@ def upload_directory(service, local_path: Path, parent_id: str | None = None):
         else:
             # It's a file - upload it to the Drive folder we created
             upload_file(service, item, folder_id)
-    
+
     # After this function completes, the entire folder structure is uploaded!

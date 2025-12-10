@@ -87,8 +87,11 @@ uv run python main.py -o ./output
 # Dry run (extract files but don't upload to Drive)
 uv run python main.py -d
 
+# Preserve original filenames (no serial number prefix)
+uv run python main.py --no-serial
+
 # Combine options
-uv run python main.py --output-directory ./my-notes --dry-run
+uv run python main.py --output-directory ./my-notes --dry-run --no-serial
 
 # Add development dependencies
 uv add --dev pytest black ruff mypy
@@ -117,8 +120,11 @@ python main.py -o ./output
 # Dry run (extract files but don't upload to Drive)
 python main.py -d
 
+# Preserve original filenames (no serial number prefix)
+python main.py --no-serial
+
 # Combine options
-python main.py --output-directory ./my-notes --dry-run
+python main.py --output-directory ./my-notes --dry-run --no-serial
 ```
 
 ### Testing Without Upload
@@ -197,5 +203,38 @@ Key libraries:
 - Virtual environment is in `.venv/` (excluded from git)
 - Extraction logs (`extraction_log.json`) track all processed notes and errors
 - Google Drive creates folders recursively, mirroring local structure exactly
-- No test suite currently exists
-- No linting configuration in place
+- Linting: Ruff (fast Python linter) - `uv run ruff check`
+- Formatting: Black (code formatter) - `uv run black .`
+- Type checking: MyPy (optional) - `uv run mypy .`
+- Test suite: Manual testing (automated tests planned for v1.2.0)
+- Commit format: Conventional Commits (enforced by GitHub Actions)
+
+## Documentation Structure
+
+The project uses organized documentation under `docs/`:
+
+- **README.md** - Landing page with quick start and overview
+- **docs/usage.md** - Complete step-by-step user guide (former HOWTO.md)
+- **docs/reference.md** - CLI flags, file formats, logging schema, conventions
+- **docs/dev.md** - Developer setup, code style, testing, debugging
+- **docs/release.md** - Release process, versioning, checklist
+- **docs/roadmap.md** - Future plans and milestones (former ROADMAP.md)
+- **CHANGELOG.md** - Version history (Keep a Changelog format)
+- **CLAUDE.md** - This file (AI agent cheat sheet)
+
+### When to Update Documentation
+
+- **README.md:** New features, changed installation process
+- **docs/usage.md:** New CLI flags, changed workflow
+- **docs/reference.md:** New flags, new log types, new file behaviors
+- **docs/dev.md:** Changed development tools, new testing procedures
+- **CHANGELOG.md:** Every user-facing change (features, fixes, breaking changes)
+- **CLAUDE.md:** Changed architecture, new files, modified data flow
+
+### Documentation Principles
+
+1. **One source of truth:** Don't duplicate information across files
+2. **Cross-link:** Reference other docs instead of repeating content
+3. **Code examples:** Use fenced code blocks with syntax highlighting
+4. **Tables:** Use for structured data (flags, options, comparisons)
+5. **Warnings:** Call out risks and edge cases clearly

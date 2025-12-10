@@ -56,7 +56,7 @@ This project already has **excellent development practices** in place:
 #### 1. Optional Serial Number Prefix (Feature #1)
 **Status**: Planned
 **Priority**: High
-**Description**: Add command-line flag `--preserve-filenames` or `--no-serial` to disable the automatic 6-digit ID prefix on filenames.
+**Description**: Add command-line flag `-ns` or `--no-serial` to disable the automatic 6-digit ID prefix on filenames.
 
 **Use Case**: When migrating certain notebooks, users may want to preserve original filenames without the serial number prefix.
 
@@ -66,7 +66,7 @@ This project already has **excellent development practices** in place:
 uv run python main.py
 
 # Preserve original filenames
-uv run python main.py --preserve-filenames
+uv run python main.py --no-serial
 ```
 
 #### 2. Enhanced Error Handling & Logging (Feature #2)

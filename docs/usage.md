@@ -433,6 +433,19 @@ To specify a different output directory:
 uv run python main.py --output-directory ./my-notes
 ```
 
+#### Step 8.4: Preserve Original Filenames
+
+By default, all files are prefixed with a 6-digit ID (e.g., `A3B7F2-MyNote.pdf`). To preserve original filenames:
+
+```bash
+uv run python main.py --no-serial
+# Or use the short form: -ns
+```
+
+This creates files like `MyNote.pdf` instead of `A3B7F2-MyNote.pdf`.
+
+⚠️ **Important**: If you have multiple notes with the same title in a notebook, the tool will automatically add `_1`, `_2` suffixes to prevent data loss (e.g., `MyNote.pdf`, `MyNote_1.pdf`, `MyNote_2.pdf`).
+
 ### Running with pip/Traditional Python
 
 If you're using pip, you need to activate the virtual environment first.
@@ -496,7 +509,20 @@ Or use the short form:
 python3 main.py -o "./My Notes"
 ```
 
-#### Step 8.5: View Help
+#### Step 8.5: Preserve Original Filenames
+
+By default, all files are prefixed with a 6-digit ID (e.g., `A3B7F2-MyNote.pdf`). To preserve original filenames:
+
+```bash
+python3 main.py --no-serial
+# Or use the short form: -ns
+```
+
+This creates files like `MyNote.pdf` instead of `A3B7F2-MyNote.pdf`.
+
+⚠️ **Important**: If you have multiple notes with the same title in a notebook, the tool will automatically add `_1`, `_2` suffixes to prevent data loss (e.g., `MyNote.pdf`, `MyNote_1.pdf`, `MyNote_2.pdf`).
+
+#### Step 8.6: View Help
 
 To see all available options:
 
@@ -690,4 +716,3 @@ python3 main.py
 ```
 
 Happy migrating! 🚀
-

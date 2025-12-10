@@ -12,22 +12,21 @@ Key Concepts:
 """
 
 # Standard library imports - these come with Python
-import json          # For reading/writing JSON log files
-import base64        # For decoding base64-encoded file data from ENEX files
-import argparse      # For parsing command-line arguments (like --dry-run)
-import mimetypes     # For guessing file extensions from MIME types
-import os            # For checking if files exist
-import urllib.parse  # For URL parsing (currently imported but may be for future use)
-from pathlib import Path  # Modern way to handle file paths (better than os.path)
+import argparse  # For parsing command-line arguments (like --dry-run)
+import base64  # For decoding base64-encoded file data from ENEX files
+import json  # For reading/writing JSON log files
+import mimetypes  # For guessing file extensions from MIME types
+import os  # For checking if files exist
 import xml.etree.ElementTree as ET  # For parsing XML content in ENEX files
+from pathlib import Path  # Modern way to handle file paths (better than os.path)
 
 # Local imports - these are files in the same project
-from gdrive import upload_directory, authenticate_drive  # Functions for Google Drive integration
+from gdrive import authenticate_drive, upload_directory  # Functions for Google Drive integration
 from pdf_utils import (
-    generate_unique_id,           # Creates unique 6-character IDs for notes
-    create_multi_item_pdf,        # Merges text + images/PDFs into one PDF
-    should_create_multi_item_pdf, # Decides if we need a multi-item PDF
-    create_text_pdf               # Converts plain text to PDF
+    create_multi_item_pdf,  # Merges text + images/PDFs into one PDF
+    create_text_pdf,  # Converts plain text to PDF
+    generate_unique_id,  # Creates unique 6-character IDs for notes
+    should_create_multi_item_pdf,  # Decides if we need a multi-item PDF
 )
 
 
@@ -39,7 +38,7 @@ def load_extraction_log(log_file: Path) -> dict:
     WHAT THIS DOES:
     This function loads a JSON file that tracks which notes have been processed.
     Think of it like a diary that remembers what we've already done.
-    
+
     HOW IT WORKS:
     1. Checks if the log file exists
     2. If not, creates an empty JSON file with just "{}" (empty dictionary)
@@ -52,7 +51,7 @@ def load_extraction_log(log_file: Path) -> dict:
     Returns:
         dict: A dictionary containing the log data. Empty dict {} if file doesn't exist
               or if there's an error reading it.
-    
+
     EXAMPLE:
         log_file = Path("./extraction_log.json")
         logs = load_extraction_log(log_file)
@@ -82,7 +81,7 @@ def list_enex_files(input_dir: Path) -> list[Path]:
 
     WHAT THIS DOES:
     Scans a directory and finds all files ending in .enex (Evernote export files).
-    
+
     HOW IT WORKS:
     1. Uses iterdir() to get all files/folders in the directory
     2. Checks each item's suffix (file extension)
@@ -94,12 +93,12 @@ def list_enex_files(input_dir: Path) -> list[Path]:
 
     Returns:
         list[Path]: A list of Path objects pointing to .enex files
-    
+
     EXAMPLE:
         input_dir = Path("./input_data")
         files = list_enex_files(input_dir)
         # files might be: [Path("./input_data/Notebook1.enex"), Path("./input_data/Notebook2.enex")]
-    
+
     NOTE:
         This uses a "list comprehension" - a concise Python way to filter items.
         Equivalent longer code:
@@ -115,7 +114,52 @@ def list_enex_files(input_dir: Path) -> list[Path]:
     return [f for f in input_dir.iterdir() if f.suffix.lower() == ".enex"]
 
 
-def process_enex_file(file: Path, output_dir: Path, logs: dict):
+def get_unique_filepath(base_path: Path, logs: dict) -> Path:
+    """
+    Ensure a unique file path by adding a counter suffix if the file already exists.
+
+    This prevents silent data loss when --no-serial is used and multiple notes
+    have the same title in a notebook.
+
+    Args:
+        base_path: The initial desired file path (e.g., "My Note.pdf")
+        logs: Logging dictionary to record collision warnings
+
+    Returns:
+        Path: A unique file path (e.g., "My Note.pdf" or "My Note_1.pdf" or "My Note_2.pdf")
+
+    Example:
+        If "Vacation.pdf" exists:
+        - First call: Returns "Vacation.pdf"
+        - Second call: Returns "Vacation_1.pdf" (logs warning)
+        - Third call: Returns "Vacation_2.pdf" (logs warning)
+    """
+    if not base_path.exists():
+        return base_path
+
+    # File exists - need to find a unique name
+    stem = base_path.stem  # Filename without extension (e.g., "My Note")
+    suffix = base_path.suffix  # Extension (e.g., ".pdf")
+    parent = base_path.parent  # Directory
+
+    counter = 1
+    while True:
+        new_path = parent / f"{stem}_{counter}{suffix}"
+        if not new_path.exists():
+            # Log collision warning
+            warning_msg = f"File collision: '{base_path.name}' already exists, using '{new_path.name}'"
+            print(f"⚠️  WARNING: {warning_msg}")
+            logs.setdefault("warnings", []).append({
+                "type": "filename-collision",
+                "original": base_path.name,
+                "deduped": new_path.name,
+                "message": warning_msg
+            })
+            return new_path
+        counter += 1
+
+
+def process_enex_file(file: Path, output_dir: Path, logs: dict, preserve_filenames: bool = False):
     """
     Process a single ENEX file and extract its notes.
 
@@ -135,14 +179,15 @@ def process_enex_file(file: Path, output_dir: Path, logs: dict):
         file (Path): Path to the ENEX file to process (e.g., Path("./input_data/MyNotebook.enex"))
         output_dir (Path): Where to save the extracted notes (e.g., Path("./EverNote Notes"))
         logs (dict): Dictionary that accumulates processing results for logging
-    
+        preserve_filenames (bool): If True, skip serial number prefix on filenames (default: False)
+
     EXAMPLE:
         file = Path("./input_data/WorkNotes.enex")
         output_dir = Path("./EverNote Notes")
         logs = {}
-        process_enex_file(file, output_dir, logs)
+        process_enex_file(file, output_dir, logs, preserve_filenames=False)
         # This will create "./EverNote Notes/WorkNotes/" and process all notes in the file
-    
+
     NOTE:
         file.stem gives the filename without extension
         "MyNotebook.enex" → stem = "MyNotebook"
@@ -150,7 +195,7 @@ def process_enex_file(file: Path, output_dir: Path, logs: dict):
     # Get notebook name from filename (remove .enex extension)
     # Example: "MyNotebook.enex" → notebook_name = "MyNotebook"
     notebook_name = file.stem
-    
+
     # Initialize an empty list in logs dictionary for this notebook
     # This will store information about each processed note
     logs[notebook_name] = []
@@ -159,7 +204,7 @@ def process_enex_file(file: Path, output_dir: Path, logs: dict):
     try:
         # ET.parse() reads and parses the XML file into a tree structure
         tree = ET.parse(file)
-        
+
         # getroot() gets the root element, findall("note") finds all <note> tags
         # Each <note> tag represents one note from Evernote
         notes = tree.getroot().findall("note")
@@ -175,10 +220,10 @@ def process_enex_file(file: Path, output_dir: Path, logs: dict):
     # Process each note in the ENEX file
     # This loops through all the <note> elements we found
     for note in notes:
-        process_note(note, notebook_name, file, output_dir, logs)
+        process_note(note, notebook_name, file, output_dir, logs, preserve_filenames)
 
 
-def process_note(note, notebook_name, file, output_dir, logs):
+def process_note(note, notebook_name, file, output_dir, logs, preserve_filenames=False):
     """
     Process a single note: extract text and resources, create PDFs with unique IDs.
 
@@ -204,14 +249,14 @@ def process_note(note, notebook_name, file, output_dir, logs):
         file (Path): Path to the source ENEX file (for logging)
         output_dir (Path): Base directory where all notebooks will be saved
         logs (dict): Dictionary to log processing results
-    
+
     EXAMPLE:
         A note might contain:
         - Title: "Meeting Notes"
         - Text: "Discussed project timeline..."
         - Resources: [image1.jpg, document.pdf]
         → This becomes a multi-item PDF
-    
+
     IMPORTANT CONCEPTS:
         - safe_title: Removes characters that can't be in filenames (like "/")
         - note_id: Unique identifier to prevent filename conflicts
@@ -220,14 +265,15 @@ def process_note(note, notebook_name, file, output_dir, logs):
     # Extract the note's title from the XML
     # findtext() searches for a tag and returns its text content
     title = note.findtext("title")
-    
+
     # If there's no title, skip this note (can't create a file without a name)
     if not title:
         return  # Exit early - nothing to process
 
-    # Generate a unique 6-character ID for this note
+    # Generate a unique 6-character ID for this note (unless preserve_filenames is True)
     # Example: "A3B9K2" - helps prevent filename conflicts
-    note_id = generate_unique_id()
+    # If preserve_filenames is True, use empty string (no prefix)
+    note_id = "" if preserve_filenames else generate_unique_id()
 
     # Make the title safe for filesystem use
     # "/" is not allowed in filenames on most systems, so replace with "-"
@@ -237,7 +283,7 @@ def process_note(note, notebook_name, file, output_dir, logs):
     # Find all resource elements in the note
     # Resources are attachments like images, PDFs, videos, etc.
     resources = note.findall("resource")
-    
+
     # Find the content element which contains the note's text
     content_element = note.find("content")
     text_content = None  # Will store extracted text if available
@@ -249,7 +295,7 @@ def process_note(note, notebook_name, file, output_dir, logs):
             # Parse the content XML to extract plain text
             # strip() removes leading/trailing whitespace
             content_root = ET.fromstring(content_element.text.strip())
-            
+
             # itertext() gets all text from all XML elements
             # join with "\n" puts each text block on a new line
             text_content = "\n".join(content_root.itertext()).strip()
@@ -326,11 +372,11 @@ def handle_multi_item_note(
         - Image1.jpg
         - Image2.png
         - Video.mp4 (unsupported)
-        
+
         Result:
         - "A3B9K2 - Meeting notes-MultiItem.pdf" (contains text + images)
         - "A3B9K2 - Meeting notes-Video.mp4" (saved separately)
-    
+
     IMPORTANT:
         - Resources in ENEX files are base64-encoded (text representation of binary data)
         - We decode them to get the actual files
@@ -338,7 +384,7 @@ def handle_multi_item_note(
     """
     # List to store paths of temporary resource files we create
     temp_resource_paths = []
-    
+
     # Create a temporary directory to store extracted resources
     # The ".temp_resources" prefix with dot makes it a hidden folder (optional)
     temp_dir = note_dir / ".temp_resources"
@@ -351,7 +397,7 @@ def handle_multi_item_note(
         for idx, res in enumerate(resources):
             # Find the "data" element - contains the actual file data (base64-encoded)
             data_element = res.find("data")
-            
+
             # Find the "mime" element - tells us the file type (e.g., "image/jpeg")
             mime_element = res.find("mime")
 
@@ -361,7 +407,7 @@ def handle_multi_item_note(
 
             # Get the MIME type (e.g., "image/jpeg", "application/pdf")
             mime_type = mime_element.text
-            
+
             # Skip if MIME type or data is missing
             if not mime_type or not data_element.text:
                 continue
@@ -371,7 +417,7 @@ def handle_multi_item_note(
             # strict=True means only return extensions if we're confident
             # or "" means return empty string if we can't guess
             extension = mimetypes.guess_extension(mime_type, strict=True) or ""
-            
+
             # Create a temporary filename for this resource
             # Example: "resource_0.jpg", "resource_1.png"
             temp_file_name = f"resource_{idx}{extension}"
@@ -382,10 +428,10 @@ def handle_multi_item_note(
                 # Decode base64-encoded data to get binary file data
                 # ENEX files store binary data as text using base64 encoding
                 binary_data = base64.b64decode(data_element.text)
-                
+
                 # Write the binary data to a temporary file
                 temp_file_path.write_bytes(binary_data)
-                
+
                 # Remember this file path for later processing
                 temp_resource_paths.append(temp_file_path)
             except Exception as e:
@@ -394,8 +440,15 @@ def handle_multi_item_note(
                 continue  # Skip this resource, try next one
 
         # Create the final PDF filename
-        # Example: "A3B9K2 - Meeting Notes-MultiItem.pdf"
-        output_pdf_path = note_dir / f"{note_id} - {safe_title}-MultiItem.pdf"
+        # With serial: "A3B9K2 - Meeting Notes-MultiItem.pdf"
+        # Without serial: "Meeting Notes-MultiItem.pdf"
+        if note_id:
+            output_pdf_path = note_dir / f"{note_id} - {safe_title}-MultiItem.pdf"
+        else:
+            output_pdf_path = note_dir / f"{safe_title}-MultiItem.pdf"
+
+        # Ensure unique filepath (adds _1, _2 suffix if collision occurs)
+        output_pdf_path = get_unique_filepath(output_pdf_path, logs)
 
         # Try to create the multi-item PDF
         try:
@@ -424,16 +477,23 @@ def handle_multi_item_note(
             # These can't be merged into PDF, so save them separately
             if unsupported_files:
                 print(f"⚠️  Note '{safe_title}' has {len(unsupported_files)} unsupported file(s) - saving separately")
-                
+
                 # Move each unsupported file from temp directory to final location
                 for unsupported_file in unsupported_files:
-                    # Create new filename with note ID prefix
-                    # Example: "A3B9K2 - Meeting Notes-Video.mp4"
-                    separate_file_path = note_dir / f"{note_id} - {safe_title}-{unsupported_file.name}"
-                    
+                    # Create new filename with note ID prefix (if enabled)
+                    # With serial: "A3B9K2 - Meeting Notes-Video.mp4"
+                    # Without serial: "Meeting Notes-Video.mp4"
+                    if note_id:
+                        separate_file_path = note_dir / f"{note_id} - {safe_title}-{unsupported_file.name}"
+                    else:
+                        separate_file_path = note_dir / f"{safe_title}-{unsupported_file.name}"
+
+                    # Ensure unique filepath (adds _1, _2 suffix if collision occurs)
+                    separate_file_path = get_unique_filepath(separate_file_path, logs)
+
                     # rename() moves the file to new location
                     unsupported_file.rename(separate_file_path)
-                    
+
                     # Log this separately saved file
                     logs[notebook_name].append({
                         "file": file.name,
@@ -462,7 +522,7 @@ def handle_multi_item_note(
     finally:
         # CLEANUP: This block always runs, even if errors occurred above
         # This ensures we don't leave temporary files lying around
-        
+
         # Delete temporary resource files
         for temp_file in temp_resource_paths:
             try:
@@ -513,7 +573,7 @@ def handle_single_resource(
     EXAMPLE:
         Note: "Vacation Photo" with one image.jpg
         Result: "A3B9K2 - Vacation Photo.jpg" saved in notebook directory
-    
+
     NOTE:
         This function doesn't convert to PDF - it saves the original file format.
         The file is saved as-is (image stays as image, PDF stays as PDF, etc.)
@@ -552,21 +612,24 @@ def handle_single_resource(
     # Convert MIME type to file extension
     # Example: "image/jpeg" → ".jpg", "application/pdf" → ".pdf"
     extension = mimetypes.guess_extension(mime_type, strict=True) or ""
-    
-    # Create filename: "ID - Title.extension"
-    # Example: "A3B9K2 - Vacation Photo.jpg"
-    file_name = f"{note_id} - {safe_title}{extension}"
+
+    # Create filename: "ID - Title.extension" or just "Title.extension" if preserving
+    # With serial: "A3B9K2 - Vacation Photo.jpg"
+    # Without serial: "Vacation Photo.jpg"
+    if note_id:
+        file_name = f"{note_id} - {safe_title}{extension}"
+    else:
+        file_name = f"{safe_title}{extension}"
     file_path = note_dir / file_name
+
+    # Ensure unique filepath (adds _1, _2 suffix if collision occurs)
+    file_path = get_unique_filepath(file_path, logs)
 
     # Try to decode and save the file
     try:
         # Decode base64-encoded data to get binary file content
         binary_data = base64.b64decode(data_element.text)
-        
-        # Only write if file doesn't already exist (prevents overwriting)
-        # This is useful if you run the script multiple times
-        if not file_path.exists():
-            file_path.write_bytes(binary_data)
+        file_path.write_bytes(binary_data)
 
         # Log successful save
         logs[notebook_name].append({
@@ -579,7 +642,7 @@ def handle_single_resource(
             "type": "single-resource",  # Mark as single resource type
         })
         print(f"Saved single resource: {file_path.name}")
-        
+
     except Exception as e:
         # If anything goes wrong (decoding error, write permission, etc.)
         logs[notebook_name].append({
@@ -620,22 +683,30 @@ def handle_text_only_note(
     EXAMPLE:
         Note: "Shopping List" with text "Milk, Eggs, Bread..."
         Result: "A3B9K2-Shopping List.pdf" created in notebook directory
-    
+
     NOTE:
         All text-only notes are converted to PDF format for consistency.
         The PDF uses standard formatting (11pt font, letter-sized pages).
     """
     # Create the PDF filename
-    # Format: "ID-Title.pdf" (note: no space after ID, different from other handlers)
+    # With serial: "ID-Title.pdf" (note: no space after ID, different from other handlers)
     # Example: "A3B9K2-Shopping List.pdf"
-    file_path = note_dir / f"{note_id}-{safe_title}.pdf"
+    # Without serial: "Title.pdf"
+    # Example: "Shopping List.pdf"
+    if note_id:
+        file_path = note_dir / f"{note_id}-{safe_title}.pdf"
+    else:
+        file_path = note_dir / f"{safe_title}.pdf"
+
+    # Ensure unique filepath (adds _1, _2 suffix if collision occurs)
+    file_path = get_unique_filepath(file_path, logs)
 
     # Try to create the PDF
     try:
         # Convert the text content to a PDF file
         # This function handles all the PDF formatting (fonts, margins, pages, etc.)
         create_text_pdf(text_content, file_path)
-        
+
         # Log successful PDF creation
         logs[notebook_name].append({
             "file": file.name,
@@ -647,7 +718,7 @@ def handle_text_only_note(
             "type": "text-only-pdf",  # Mark as text-only type
         })
         print(f"Created text-only PDF: {file_path.name}")
-        
+
     except Exception as e:
         # If PDF creation fails, log the error
         logs[notebook_name].append({
@@ -661,7 +732,7 @@ def handle_text_only_note(
         print(f"Error creating text-only PDF for {safe_title}: {e}")
 
 
-def process_files(output_directory: Path, dry_run: bool) -> None:
+def process_files(output_directory: Path, dry_run: bool, preserve_filenames: bool = False) -> None:
     """
     Main driver function: Processes ENEX files and optionally uploads to Google Drive.
 
@@ -683,11 +754,11 @@ def process_files(output_directory: Path, dry_run: bool) -> None:
         output_directory (Path): Where to save extracted notes (e.g., Path("./EverNote Notes"))
         dry_run (bool): If True, process files but skip Google Drive upload
                        Useful for testing without actually uploading
-    
+
     EXAMPLE:
         process_files(Path("./My Notes"), dry_run=False)
         # Processes all ENEX files and uploads to Google Drive
-    
+
     FLOW:
         1. Check input directory exists
         2. Create output directory
@@ -698,7 +769,7 @@ def process_files(output_directory: Path, dry_run: bool) -> None:
     """
     # Inform user where files will be saved
     print(f"[INFO] Processing notes into: {output_directory}")
-    
+
     # Inform user if we're in test mode (dry run)
     if dry_run:
         print("[INFO] Dry run mode enabled — Google Drive syncing will be skipped.")
@@ -706,7 +777,7 @@ def process_files(output_directory: Path, dry_run: bool) -> None:
     # Define paths - these are relative to where you run the script from
     input_directory = Path("./input_data")  # Where ENEX files are stored
     extraction_log_file = Path("./extraction_log.json")  # Log file for tracking progress
-    
+
     # Load existing log file (or create empty one if it doesn't exist)
     logs_json = load_extraction_log(extraction_log_file)
 
@@ -719,7 +790,7 @@ def process_files(output_directory: Path, dry_run: bool) -> None:
     # parents=True creates parent directories too
     # exist_ok=True means don't error if it already exists
     output_directory.mkdir(parents=True, exist_ok=True)
-    
+
     # Find all ENEX files in the input directory
     files = list_enex_files(input_directory)
 
@@ -732,7 +803,7 @@ def process_files(output_directory: Path, dry_run: bool) -> None:
     # Each file represents one notebook from Evernote
     for file in files:
         # This processes the entire ENEX file and all notes within it
-        process_enex_file(file, output_directory, logs_json)
+        process_enex_file(file, output_directory, logs_json, preserve_filenames)
 
     # Save all the logs we've accumulated to the JSON file
     finalize_logs(logs_json, extraction_log_file)
@@ -745,7 +816,7 @@ def process_files(output_directory: Path, dry_run: bool) -> None:
         # Credentials file exists - proceed with upload
         # First, authenticate with Google Drive
         service_account = authenticate_drive()
-        
+
         # Upload the entire output directory to Google Drive
         # This recreates the folder structure in Drive
         upload_directory(service_account, output_directory)
@@ -772,7 +843,7 @@ def finalize_logs(logs_json: dict, log_file: Path):
     Args:
         logs_json (dict): Dictionary containing all processing logs
         log_file (Path): Path to the JSON log file to create/overwrite
-    
+
     EXAMPLE:
         logs = {"Notebook1": [{"note": "My Note", "success": True}]}
         finalize_logs(logs, Path("./extraction_log.json"))
@@ -789,16 +860,16 @@ def finalize_logs(logs_json: dict, log_file: Path):
 if __name__ == "__main__":
     """
     COMMAND-LINE INTERFACE SETUP
-    
+
     This section sets up the command-line interface using argparse.
     Users can run: python main.py --dry-run --output-directory "./My Notes"
-    
+
     Key concepts:
     - argparse: Python library for parsing command-line arguments
     - --dry-run: Flag that skips Google Drive upload
     - --output-directory: Option to specify where files are saved
     """
-    
+
     # Create argument parser with program name and description
     parser = argparse.ArgumentParser(
         prog="Evernote-to-Drive Migrator",
@@ -823,16 +894,25 @@ if __name__ == "__main__":
         help="Run without uploading to Google Drive (for testing output structure only)"
     )
 
+    # Add --no-serial or -ns
+    parser.add_argument(
+        "-ns", "--no-serial",
+        action="store_true",  # If flag is present, set to True; if absent, False
+        dest="preserve_filenames",  # All flags set the same variable
+        help="Preserve original filenames without adding serial number prefix (default: False)"
+    )
+
     # Parse the command-line arguments
     # This reads what the user typed and converts it to Python variables
     args = parser.parse_args()
-    
+
     # Extract the values from parsed arguments
     output_directory: Path = args.output_directory  # Get output directory path
     dry_run: bool = args.dry_run                    # Get dry-run flag (True or False)
+    preserve_filenames: bool = args.preserve_filenames  # Get preserve-filenames flag (True or False)
 
     # Ensure output directory exists (create if needed)
     output_directory.mkdir(parents=True, exist_ok=True)
 
     # Run the main processing function with user's arguments
-    process_files(output_directory, dry_run)
+    process_files(output_directory, dry_run, preserve_filenames)

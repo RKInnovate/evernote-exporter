@@ -31,27 +31,26 @@ These files are saved separately with ID prefix. Future handling requires discus
 """
 
 # Standard library imports
-import io        # For working with in-memory file-like objects (currently unused but imported)
-import random    # For generating random IDs
-import string    # For character sets used in ID generation
+import random  # For generating random IDs
+import string  # For character sets used in ID generation
 from pathlib import Path  # For handling file paths
-from typing import List, Optional, Tuple  # Type hints for better code documentation
+from typing import Optional  # Type hints for better code documentation
 
 # Third-party library imports for PDF and image processing
 from PIL import Image  # Python Imaging Library - for opening and processing images
-from reportlab.lib.pagesizes import letter, A4  # Standard page sizes (letter = 8.5x11 inches)
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle  # For text styling in PDFs
-from reportlab.lib.units import inch  # Unit conversion (1 inch = 72 points)
-from reportlab.platypus import (  # ReportLab's document layout system
-    SimpleDocTemplate,  # Creates PDF documents
-    Paragraph,          # Formats text as paragraphs
-    Spacer,             # Adds vertical spacing
-    PageBreak,          # Forces new page (imported but currently unused)
-    Image as RLImage    # ReportLab's Image class (renamed to avoid conflict with PIL.Image)
-)
-from reportlab.lib.enums import TA_LEFT  # Text alignment constant (left align)
 from pypdf import PdfReader, PdfWriter  # For reading and merging existing PDF files
-
+from reportlab.lib.enums import TA_LEFT  # Text alignment constant (left align)
+from reportlab.lib.pagesizes import letter  # Standard page sizes (letter = 8.5x11 inches)
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet  # For text styling in PDFs
+from reportlab.lib.units import inch  # Unit conversion (1 inch = 72 points)
+from reportlab.platypus import (
+    Image as RLImage,  # ReportLab's Image class (renamed to avoid conflict with PIL.Image)
+)
+from reportlab.platypus import (  # ReportLab's document layout system
+    Paragraph,  # Formats text as paragraphs
+    SimpleDocTemplate,  # Creates PDF documents
+    Spacer,  # Adds vertical spacing
+)
 
 # ============================================================================
 # FILE TYPE CONSTANTS
@@ -105,7 +104,7 @@ def generate_unique_id(length: int = 6) -> str:
     EXAMPLE:
         id1 = generate_unique_id()      # Might return "A3B9K2"
         id2 = generate_unique_id(8)     # Might return "X7Y1Z4M9"
-    
+
     IMPORTANT:
         - IDs are random, not sequential
         - Very small chance of duplicates (with 6 chars = 36^6 combinations)
@@ -115,7 +114,7 @@ def generate_unique_id(length: int = 6) -> str:
     # string.ascii_uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     # string.digits = "0123456789"
     characters = string.ascii_uppercase + string.digits
-    
+
     # random.choices() randomly selects 'length' characters (with replacement)
     # ''.join() combines them into a single string
     # k=length means select this many characters
@@ -151,7 +150,7 @@ def categorize_file_type(file_path: Path) -> str:
         categorize_file_type(Path("document.pdf"))   # Returns 'pdf'
         categorize_file_type(Path("video.mp4"))      # Returns 'unsupported'
         categorize_file_type(Path("file.xyz"))       # Returns 'unknown'
-    
+
     IMPORTANT:
         - Only looks at file extension, not actual file content
         - Case-insensitive: .JPG and .jpg are treated the same
@@ -178,8 +177,8 @@ def categorize_file_type(file_path: Path) -> str:
 
 
 def separate_supported_unsupported_resources(
-    resource_paths: List[Path]
-) -> Tuple[List[Path], List[Path]]:
+    resource_paths: list[Path]
+) -> tuple[list[Path], list[Path]]:
     """
     Separate resources into supported (can be in PDF) and unsupported (must be saved separately).
 
@@ -207,7 +206,7 @@ def separate_supported_unsupported_resources(
         supported, unsupported = separate_supported_unsupported_resources(files)
         # supported = [Path("photo.jpg"), Path("document.pdf")]
         # unsupported = [Path("video.mp4"), Path("archive.zip")]
-    
+
     NOTE:
         Unknown file types go into unsupported list (better safe than sorry)
     """
@@ -219,7 +218,7 @@ def separate_supported_unsupported_resources(
     for path in resource_paths:
         # Determine what type of file this is
         file_type = categorize_file_type(path)
-        
+
         # If it's an image or PDF, we can include it in the merged PDF
         if file_type in ['image', 'pdf']:
             supported.append(path)
@@ -257,7 +256,7 @@ def create_text_pdf(text_content: str, output_path: Path) -> None:
         text = "Hello World\n\nThis is a test document."
         create_text_pdf(text, Path("./output.pdf"))
         # Creates output.pdf with formatted text
-    
+
     IMPORTANT CONCEPTS:
         - SimpleDocTemplate: ReportLab's document builder
         - story: A list of elements (paragraphs, images, etc.) to add to PDF
@@ -269,11 +268,11 @@ def create_text_pdf(text_content: str, output_path: Path) -> None:
     # str(output_path) converts Path to string (ReportLab needs string)
     # pagesize=letter means 8.5 x 11 inch pages
     doc = SimpleDocTemplate(str(output_path), pagesize=letter)
-    
+
     # "story" is ReportLab's term for the list of elements to add to the PDF
     # We'll add paragraphs, spacers, etc. to this list
     story = []
-    
+
     # Get default text styles from ReportLab
     # These provide basic formatting options
     styles = getSampleStyleSheet()
@@ -292,7 +291,7 @@ def create_text_pdf(text_content: str, output_path: Path) -> None:
     # Split text into paragraphs based on newline characters
     # Example: "Line1\nLine2\n\nLine3" → ["Line1", "Line2", "", "Line3"]
     paragraphs = text_content.split('\n')
-    
+
     # Process each paragraph
     for para_text in paragraphs:
         # Check if paragraph has actual content (not just whitespace)
@@ -334,13 +333,13 @@ def image_to_pdf(image_path: Path, output_path: Path) -> None:
     EXAMPLE:
         image_to_pdf(Path("photo.jpg"), Path("photo.pdf"))
         # Creates photo.pdf containing the image
-    
+
     IMPORTANT CONCEPTS:
         - RGBA: Red-Green-Blue-Alpha (alpha = transparency)
         - PDFs don't support transparency, so we convert RGBA to RGB
         - Aspect ratio: width/height ratio (keeps image from being stretched)
         - Scaling: Making image larger or smaller to fit page
-    
+
     COLOR MODE EXPLANATION:
         - RGB: Standard color mode (red, green, blue) - PDF compatible
         - RGBA: RGB + Alpha channel (transparency) - needs conversion
@@ -352,12 +351,12 @@ def image_to_pdf(image_path: Path, output_path: Path) -> None:
 
         # Convert image color mode if necessary
         # PDFs work best with RGB (no transparency)
-        
+
         # Handle RGBA images (with transparency/alpha channel)
         if img.mode == 'RGBA':
             # Create a white RGB image the same size as original
             rgb_img = Image.new('RGB', img.size, (255, 255, 255))  # White background
-            
+
             # Paste the RGBA image onto RGB background, using alpha as mask
             # split()[3] gets the alpha channel (transparency info)
             rgb_img.paste(img, mask=img.split()[3])
@@ -373,17 +372,17 @@ def image_to_pdf(image_path: Path, output_path: Path) -> None:
         # Calculate how big the image should be to fit on the page
         # letter page size in points: (612, 792) for 8.5" x 11"
         page_width, page_height = letter
-        
+
         # Set margins (0.5 inch on all sides)
         margin = 0.5 * inch
-        
+
         # Maximum size for image (page size minus margins on both sides)
         max_width = page_width - 2 * margin   # Left + right margins
         max_height = page_height - 2 * margin # Top + bottom margins
 
         # Get original image dimensions (in pixels)
         img_width, img_height = img.size
-        
+
         # Calculate aspect ratio (width divided by height)
         # aspect_ratio > 1 = landscape (wider than tall)
         # aspect_ratio < 1 = portrait (taller than wide)
@@ -414,14 +413,14 @@ def image_to_pdf(image_path: Path, output_path: Path) -> None:
 
         # Build (render) the PDF
         doc.build(story)
-        
+
     except Exception as e:
         # If anything goes wrong (file can't be opened, invalid format, etc.)
         print(f"Error converting image {image_path} to PDF: {e}")
         raise  # Re-raise the exception so caller knows it failed
 
 
-def merge_pdfs(pdf_paths: List[Path], output_path: Path) -> None:
+def merge_pdfs(pdf_paths: list[Path], output_path: Path) -> None:
     """
     Merge multiple PDF files into one.
 
@@ -446,7 +445,7 @@ def merge_pdfs(pdf_paths: List[Path], output_path: Path) -> None:
         pdfs = [Path("text.pdf"), Path("image.pdf"), Path("document.pdf")]
         merge_pdfs(pdfs, Path("combined.pdf"))
         # Creates combined.pdf with all pages from all input PDFs
-    
+
     IMPORTANT:
         - Pages are added in the order PDFs appear in the list
         - If a PDF can't be read, it's skipped (error message printed)
@@ -462,12 +461,12 @@ def merge_pdfs(pdf_paths: List[Path], output_path: Path) -> None:
             # Open and read the PDF file
             # PdfReader reads existing PDF files
             reader = PdfReader(str(pdf_path))
-            
+
             # Loop through each page in this PDF
             for page in reader.pages:
                 # Add the page to our writer (will be part of final merged PDF)
                 writer.add_page(page)
-                
+
         except Exception as e:
             # If we can't read this PDF (corrupted, permission error, etc.)
             # Print error but continue with other PDFs
@@ -483,16 +482,16 @@ def merge_pdfs(pdf_paths: List[Path], output_path: Path) -> None:
 
 def create_multi_item_pdf(
     text_content: Optional[str],
-    resource_paths: List[Path],
+    resource_paths: list[Path],
     output_path: Path
-) -> Tuple[bool, List[Path]]:
+) -> tuple[bool, list[Path]]:
     """
     Create a single PDF containing text and multiple resources (images/PDFs only).
 
     WHAT THIS DOES:
     Combines text content and multiple file attachments into one unified PDF.
     This is the main function for creating multi-item PDFs.
-    
+
     Process:
     1. Converts text to PDF (if provided)
     2. Converts images to PDFs
@@ -507,7 +506,7 @@ def create_multi_item_pdf(
         output_path (Path): Where to save the final merged PDF
 
     Returns:
-        Tuple[bool, List[Path]]: 
+        Tuple[bool, List[Path]]:
             - First value (bool): True if PDF was created, False if no content
             - Second value (List[Path]): Files that couldn't be merged (videos, ZIPs, etc.)
 
@@ -517,12 +516,12 @@ def create_multi_item_pdf(
         success, unsupported = create_multi_item_pdf(text, files, Path("output.pdf"))
         # Creates output.pdf with text + photo + document
         # Returns: (True, [Path("video.mp4")])
-    
+
     IMPORTANT CONCEPTS:
         - Temporary files: We create intermediate PDFs, then merge them
         - Unsupported files: Videos, ZIPs, etc. can't be in PDF - returned to caller
         - Cleanup: Temporary files are deleted after merging (in 'finally' block)
-    
+
     WORKFLOW:
         Text → PDF → |
         Image1 → PDF → | → Merge all → Final PDF
@@ -532,7 +531,7 @@ def create_multi_item_pdf(
     # Lists to track files we're working with
     temp_pdfs = []          # PDFs we'll merge (text PDF, image PDFs, existing PDFs)
     unsupported_files = []  # Files we can't merge (returned to caller)
-    
+
     # Create temporary directory for intermediate PDF files
     # These will be deleted after we merge them
     temp_dir = output_path.parent / ".temp_pdfs"
@@ -544,10 +543,10 @@ def create_multi_item_pdf(
         if text_content:
             # Create temporary PDF filename for text
             text_pdf = temp_dir / f"text_{generate_unique_id()}.pdf"
-            
+
             # Convert text to PDF
             create_text_pdf(text_content, text_pdf)
-            
+
             # Add to list of PDFs to merge
             temp_pdfs.append(text_pdf)
 
@@ -560,18 +559,18 @@ def create_multi_item_pdf(
                 # Already a PDF - can merge directly
                 # No conversion needed, just add to merge list
                 temp_pdfs.append(resource_path)
-                
+
             elif file_type == 'image':
                 # Image file - convert to PDF first
                 # Create temporary PDF filename
                 temp_pdf = temp_dir / f"img_{idx}_{generate_unique_id()}.pdf"
-                
+
                 # Convert image to PDF
                 image_to_pdf(resource_path, temp_pdf)
-                
+
                 # Add converted PDF to merge list
                 temp_pdfs.append(temp_pdf)
-                
+
             elif file_type in ['unsupported', 'unknown']:
                 # Can't include this in PDF (video, ZIP, etc.)
                 # Add to unsupported list - caller must handle separately
@@ -590,7 +589,7 @@ def create_multi_item_pdf(
     finally:
         # CLEANUP: Always runs, even if errors occurred
         # Delete temporary PDF files we created
-        
+
         # Loop through all temporary PDFs
         for temp_pdf in temp_pdfs:
             # Only delete files in temp directory (not original PDFs)
@@ -624,7 +623,7 @@ def should_create_multi_item_pdf(text_content: Optional[str], resources_count: i
     Create multi-item PDF if:
     1. Note has multiple resources (2+ attachments), OR
     2. Note has both text AND at least one resource
-    
+
     Otherwise, handle as single-item or text-only.
 
     Args:
@@ -632,23 +631,23 @@ def should_create_multi_item_pdf(text_content: Optional[str], resources_count: i
         resources_count (int): Number of attachments/resources in the note
 
     Returns:
-        bool: 
+        bool:
             - True: Create multi-item PDF (text + resources merged)
             - False: Handle as single resource or text-only
 
     EXAMPLE:
         # Multiple resources → multi-item PDF
         should_create_multi_item_pdf(None, 2) → True
-        
+
         # Text + resource → multi-item PDF
         should_create_multi_item_pdf("Hello", 1) → True
-        
+
         # Only text → text-only PDF
         should_create_multi_item_pdf("Hello", 0) → False
-        
+
         # Only one resource → single resource handler
         should_create_multi_item_pdf(None, 1) → False
-    
+
     DECISION TABLE:
         Text?  Resources?  Result
         ------  ----------  --------
@@ -668,7 +667,7 @@ def should_create_multi_item_pdf(text_content: Optional[str], resources_count: i
     # Even without text, multiple resources should be combined
     if resources_count > 1:
         return True  # Create multi-item PDF
-    
+
     # CASE 2: Text AND at least one resource
     # Combining text with attachments creates a unified document
     if has_text and resources_count >= 1:

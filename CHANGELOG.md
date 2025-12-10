@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Optional filename preservation flag** (`-ns` or `--no-serial`) - Allows users to preserve original note filenames without the 6-digit alphanumeric ID prefix. Both flag names are supported for flexibility.
+- **Automatic filename collision handling** - When using `--no-serial` and multiple notes have the same title, the tool automatically adds `_1`, `_2` suffixes to prevent silent data loss.
+- **Collision warning logging** - All filename collisions are logged to `extraction_log.json` with type `"filename-collision"` and printed as warnings during execution.
+
+### Fixed
+- **Critical bug fix**: Files are no longer silently skipped when using `--no-serial` with duplicate note titles. Previously, the second note with the same title would be lost without warning.
+- **Dual package manager support** - Added both `[project.optional-dependencies]` (for pip) and `[dependency-groups]` (for uv) to pyproject.toml, ensuring compatibility with both package managers.
+
 ### Planned for v1.1.0
-- Optional flag to disable serial number prefix on filenames
 - Enhanced error handling and warning messages
 - Verbose logging mode
 - Comprehensive error reports
