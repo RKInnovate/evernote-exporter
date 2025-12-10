@@ -8,12 +8,13 @@ This guide will walk you through setting up all dependencies and running the Eve
 
 1. [Prerequisites Check](#1-prerequisites-check)
 2. [Installing Python (if needed)](#2-installing-python-if-needed)
-3. [Setting Up the Project](#3-setting-up-the-project)
-4. [Installing Dependencies](#4-installing-dependencies)
-5. [Setting Up Google Drive API](#5-setting-up-google-drive-api)
-6. [Preparing Your ENEX Files](#6-preparing-your-enex-files)
-7. [Running the Program](#7-running-the-program)
-8. [Troubleshooting](#8-troubleshooting)
+3. [Installing uv Package Manager (Recommended)](#3-installing-uv-package-manager-recommended)
+4. [Setting Up the Project](#4-setting-up-the-project)
+5. [Installing Dependencies](#5-installing-dependencies)
+6. [Setting Up Google Drive API](#6-setting-up-google-drive-api)
+7. [Preparing Your ENEX Files](#7-preparing-your-enex-files)
+8. [Running the Program](#8-running-the-program)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -33,8 +34,8 @@ This guide will walk you through setting up all dependencies and running the Eve
    ```
 
 3. **What you should see**:
-   - ✅ **Good**: `Python 3.8.x` or higher (e.g., `Python 3.9.7`, `Python 3.11.5`)
-   - ❌ **Problem**: `command not found` or version lower than 3.8
+   - ✅ **Good**: `Python 3.9.x` or higher (e.g., `Python 3.9.7`, `Python 3.11.5`, `Python 3.12.0`)
+   - ❌ **Problem**: `command not found` or version lower than 3.9
 
 ### Step 1.2: Check if pip is Installed
 
@@ -47,7 +48,7 @@ This guide will walk you through setting up all dependencies and running the Eve
    - ✅ **Good**: `pip 20.x.x` or higher
    - ❌ **Problem**: `command not found`
 
-**Note**: If you have Python 3.8+, pip3 is usually installed automatically. If not, we'll install it in the next section.
+**Note**: If you have Python 3.9+, pip3 is usually installed automatically. If not, we'll install it in the next section.
 
 ---
 
@@ -98,9 +99,54 @@ This guide will walk you through setting up all dependencies and running the Eve
 
 ---
 
-## 3. Setting Up the Project
+## 3. Installing uv Package Manager (Recommended)
 
-### Step 3.1: Navigate to the Project Directory
+**uv** is a modern, fast Python package manager that simplifies dependency management. It's **highly recommended** as it's faster and more reliable than traditional pip.
+
+### Step 3.1: Install uv
+
+**Option A: Install with Homebrew (Easiest for Mac)**
+
+If you already have Homebrew installed:
+```bash
+brew install uv
+```
+
+**Option B: Install with curl (Universal method)**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**What this does:**
+- Downloads and installs the uv package manager
+- Adds uv to your system PATH automatically
+- Takes just a few seconds
+
+### Step 3.2: Verify Installation
+
+After installation, close and reopen Terminal, then type:
+```bash
+uv --version
+```
+
+You should see something like: `uv 0.9.12` or similar
+
+### Step 3.3: Why Use uv?
+
+- **10-100x faster** than pip for installing packages
+- **Automatic virtual environment management** - no need to manually create/activate venvs
+- **Lockfile support** - ensures everyone has the same dependency versions
+- **Better error messages** when things go wrong
+- **Compatible** with all existing Python projects
+
+**Note:** If you prefer to use traditional pip instead, skip to the "With pip" instructions in each section below.
+
+---
+
+## 4. Setting Up the Project
+
+### Step 4.1: Navigate to the Project Directory
 
 1. **Open Terminal**
 
@@ -120,33 +166,59 @@ This guide will walk you through setting up all dependencies and running the Eve
    ```
    You should see files like `main.py`, `requirements.txt`, `README.md`, etc.
 
-### Step 3.2: Create a Virtual Environment (Recommended)
+---
+
+## 5. Installing Dependencies
+
+Choose between **uv (recommended)** or **traditional pip**. Don't do both!
+
+### Option A: Install with uv (Recommended - Faster and Simpler)
+
+**uv handles everything automatically** - no need to create or activate virtual environments manually!
+
+1. **Make sure you're in the project directory** (see Step 4.1)
+
+2. **Install all dependencies with one command**:
+   ```bash
+   uv sync
+   ```
+
+3. **What happens**:
+   - uv automatically creates a virtual environment (`.venv`) if it doesn't exist
+   - Downloads and installs all required packages from `pyproject.toml`
+   - Creates a lockfile (`uv.lock`) to ensure consistent versions
+   - **Much faster** than pip - typically completes in 10-30 seconds
+   - You'll see a progress bar and "Installed X packages" message
+
+4. **That's it!** You don't need to manually activate the environment. When you run the program with `uv run`, it automatically uses the correct environment.
+
+### Option B: Install with pip (Traditional Method)
+
+If you prefer the traditional approach:
+
+#### Step B.1: Create a Virtual Environment
 
 A virtual environment keeps your project's dependencies separate from other Python projects.
 
 1. **Create the virtual environment**:
    ```bash
-   python3 -m venv venv
+   python3 -m venv .venv
    ```
-   This creates a folder called `venv` in your project directory.
+   This creates a folder called `.venv` in your project directory.
 
 2. **Activate the virtual environment**:
    ```bash
-   source venv/bin/activate
+   source .venv/bin/activate
    ```
-   
-   **You'll know it's activated when you see `(venv)` at the start of your Terminal prompt**, like:
+
+   **You'll know it's activated when you see `(.venv)` at the start of your Terminal prompt**, like:
    ```
-   (venv) your-username@your-mac evernote-exporter %
+   (.venv) your-username@your-mac evernote-exporter %
    ```
 
 3. **Keep Terminal open** - you'll need to activate the virtual environment each time you open a new Terminal window.
 
----
-
-## 4. Installing Dependencies
-
-### Step 4.1: Upgrade pip (Package Installer)
+#### Step B.2: Upgrade pip
 
 First, make sure pip is up to date:
 
@@ -156,30 +228,28 @@ pip3 install --upgrade pip
 
 Wait for it to complete (you'll see "Successfully installed pip-x.x.x").
 
-### Step 4.2: Install Project Dependencies
+#### Step B.3: Install Project Dependencies
 
-1. **Make sure you're in the project directory** (see Step 3.1)
+1. **Make sure your virtual environment is activated** (you should see `(.venv)` in your prompt)
 
-2. **Make sure your virtual environment is activated** (you should see `(venv)` in your prompt)
-
-3. **Install all required packages**:
+2. **Install all required packages**:
    ```bash
    pip3 install -r requirements.txt
    ```
 
-4. **What happens**:
-   - This will download and install all 25+ packages listed in `requirements.txt`
+3. **What happens**:
+   - This will download and install all packages listed in `requirements.txt`
    - It may take 2-5 minutes depending on your internet speed
    - You'll see lots of text scrolling by - this is normal
    - Wait until you see "Successfully installed" messages
 
-5. **Verify installation**:
+4. **Verify installation**:
    ```bash
    pip3 list
    ```
    You should see packages like `google-api-python-client`, `reportlab`, `pypdf`, `Pillow`, etc.
 
-### Step 4.3: Install System Dependencies (if needed)
+### Install System Dependencies (if needed - Both Methods)
 
 Some Python packages require system libraries. If you encounter errors during installation:
 
@@ -197,7 +267,7 @@ Some Python packages require system libraries. If you encounter errors during in
 
 ---
 
-## 5. Setting Up Google Drive API
+## 6. Setting Up Google Drive API
 
 To upload files to Google Drive, you need to set up API credentials.
 
@@ -284,7 +354,7 @@ To upload files to Google Drive, you need to set up API credentials.
 
 ---
 
-## 6. Preparing Your ENEX Files
+## 7. Preparing Your ENEX Files
 
 ### Step 6.1: Export Notes from Evernote
 
@@ -320,20 +390,65 @@ To upload files to Google Drive, you need to set up API credentials.
 
 ---
 
-## 7. Running the Program
+## 8. Running the Program
 
-### Step 7.1: Activate Virtual Environment (if not already active)
+### Running with uv (Recommended)
+
+**No need to activate a virtual environment!** uv handles everything automatically.
+
+#### Step 8.1: Test Run (Dry Run - No Upload)
+
+First, test the program without uploading to Google Drive:
+
+```bash
+cd ~/Projects/evernote-exporter
+uv run python main.py --dry-run
+```
+
+**What happens:**
+- uv automatically uses the correct virtual environment
+- The program extracts notes from `.enex` files to the output directory
+- No files are uploaded to Google Drive (dry run mode)
+- You can check the output in `./EverNote Notes/` directory
+
+#### Step 8.2: Full Run (With Google Drive Upload)
+
+Once you're satisfied with the dry run:
+
+```bash
+uv run python main.py
+```
+
+**What happens:**
+- Extracts all notes from ENEX files
+- Opens a browser window for Google OAuth authentication
+- Uploads all notes to Google Drive
+- Creates folder structure matching your notebooks
+
+#### Step 8.3: Custom Output Directory
+
+To specify a different output directory:
+
+```bash
+uv run python main.py --output-directory ./my-notes
+```
+
+### Running with pip/Traditional Python
+
+If you're using pip, you need to activate the virtual environment first.
+
+#### Step 8.1: Activate Virtual Environment (if not already active)
 
 If you closed Terminal or opened a new window:
 
 ```bash
 cd ~/Projects/evernote-exporter
-source venv/bin/activate
+source .venv/bin/activate
 ```
 
-You should see `(venv)` in your prompt.
+You should see `(.venv)` in your prompt.
 
-### Step 7.2: Test Run (Dry Run - No Upload)
+#### Step 8.2: Test Run (Dry Run - No Upload)
 
 First, test the program without uploading to Google Drive:
 
@@ -351,7 +466,7 @@ python3 main.py --dry-run
 - Look for messages like "✓ Created multi-item PDF" or "Saved single resource"
 - Check the `./EverNote Notes/` folder to see your converted notes
 
-### Step 7.3: Full Run (With Google Drive Upload)
+#### Step 8.3: Full Run (With Google Drive Upload)
 
 Once you're satisfied with the dry run:
 
@@ -367,7 +482,7 @@ python3 main.py
 5. Uploads all files to Google Drive
 6. Creates a `token.pickle` file for future runs (you won't need to authenticate again)
 
-### Step 7.4: Custom Output Directory
+#### Step 8.4: Custom Output Directory
 
 To specify a different output directory:
 
@@ -381,7 +496,7 @@ Or use the short form:
 python3 main.py -o "./My Notes"
 ```
 
-### Step 7.5: View Help
+#### Step 8.5: View Help
 
 To see all available options:
 
@@ -391,26 +506,58 @@ python3 main.py --help
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
-### Problem: "command not found: python3"
+### Using uv-specific Issues
+
+#### Problem: "command not found: uv"
+
+**Solution**:
+1. uv is not installed or not in PATH
+2. Install uv following Step 3
+3. After installing, close and reopen Terminal
+4. If still not working, try:
+   ```bash
+   source ~/.bashrc
+   # or
+   source ~/.zshrc
+   ```
+
+#### Problem: "No Python interpreter found"
+
+**Solution**:
+- uv needs Python installed
+- Follow Step 2 to install Python 3.9+
+- Verify with: `python3 --version`
+
+### Using pip-specific Issues
+
+### General Issues
+
+#### Problem: "command not found: python3"
 
 **Solution**:
 - Python is not installed or not in PATH
 - Follow Step 2 to install Python
 - After installing, you may need to restart Terminal
 
-### Problem: "No module named 'gdrive'" or similar import errors
+#### Problem: "No module named 'gdrive'" or similar import errors
 
-**Solution**:
+**Solution for uv users**:
+```bash
+cd ~/Projects/evernote-exporter
+uv sync  # Reinstall dependencies
+```
+
+**Solution for pip users**:
 1. Make sure you're in the project directory:
    ```bash
    cd ~/Projects/evernote-exporter
    ```
 
-2. Make sure virtual environment is activated (you should see `(venv)`):
+2. Make sure virtual environment is activated (you should see `(.venv)`):
    ```bash
-   source venv/bin/activate
+   source .venv/bin/activate
    ```
 
 3. Reinstall dependencies:

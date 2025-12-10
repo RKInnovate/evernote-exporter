@@ -24,11 +24,33 @@ A super simple and bulletproof script to migrate your notes from **Evernote** (v
 
 ## 🛠️ Requirements
 
-- Python 3.8+
+- Python 3.9+
 - Google Cloud Project with **Drive API** enabled
 - OAuth 2.0 credentials (`credentials.json`)
-- Install dependencies:
+- **uv** package manager (recommended) or pip
 
+### Installing uv (Recommended)
+
+```bash
+# On macOS and Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Or with Homebrew on macOS
+brew install uv
+```
+
+### Installing Dependencies
+
+**With uv (recommended):**
+```bash
+# Install dependencies in a virtual environment
+uv sync
+
+# Or run directly without installing
+uv run python main.py
+```
+
+**With pip (traditional):**
 ```bash
 pip install -r requirements.txt
 ```
@@ -37,9 +59,27 @@ pip install -r requirements.txt
 
 ## ⚙️ Usage
 
+**With uv:**
+```bash
+# Run with default options
+uv run python main.py
+
+# Run with custom output directory
+uv run python main.py --output-directory ./my-notes
+
+# Dry run (extract files but don't upload)
+uv run python main.py --dry-run
+
+# Show help
+uv run python main.py --help
+```
+
+**With pip/traditional Python:**
 ```bash
 python main.py -h -d --output-directory {{OutputDirectory}}
 ```
+
+### Command-line Options
 
 - `-o` OR `--output-directory`: Specify the directory where the output will be saved and the same directory name will be used in Google Drive.
 - `-d` OR `--dry-run`: Run the script without uploading any files.
@@ -69,12 +109,6 @@ python main.py -h -d --output-directory {{OutputDirectory}}
 - Each `.enex` file maps to one notebook.
 - Notes are converted into Google Docs.
 - Notebook structure is recreated using Drive folders.
-
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
 
 ---
 

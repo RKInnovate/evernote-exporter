@@ -4,8 +4,21 @@ venv/
 .env/
 env/
 
+# uv-specific
+.python-version
+uv.lock
+
 # PyCache
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+.eggs/
 
 # Credential Files
 credentials*
