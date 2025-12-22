@@ -49,5 +49,5 @@ body:
     id: contacts
     attributes:
       label: Contacts
-      description: Who requested this or will be impacted or triggered from?
+      description: Who requested this, who will be impacted, or what triggered this request?
       placeholder: "team@example.com/in email from user@example.com"
